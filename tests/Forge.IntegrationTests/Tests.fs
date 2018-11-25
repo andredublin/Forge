@@ -1,6 +1,8 @@
 module Tests
 
 open Expecto
+open Forge.Environment
+open Forge
 
 [<Tests>]
 let tests =
@@ -28,6 +30,15 @@ let tests =
         let dir = "new_file - wrong path to project"
         ["new project -n Sample --dir src -t console --no-paket"
          "new file -n src/Sample/Test --project ABC --template fs"
+        ]
+        |> initTest dir
+        let project = dir </> "src" </> "Sample" </> "Sample.fsproj" |> loadProject
+        project |> Expect.hasFile "Test.fs"
+
+      testCase "Create new file with copy-to-output" <| fun _ ->
+        let dir = "new_file - copy"
+        ["new project -n Sample --dir src -t console --no-paket"
+         "new file -n src/Sample/Test --project src/Sample/Sample.fsproj --template fs --copy-to-output never"
         ]
         |> initTest dir
         let project = dir </> "src" </> "Sample" </> "Sample.fsproj" |> loadProject
@@ -148,6 +159,36 @@ let tests =
         |> initTest dir
         let project = dir </> "src" </> "Sample" </> "Sample.fsproj" |> loadProject
         project |> Expect.hasFile "Test.fs"
+
+      testCase "Add File - with project, absolute path, above" <| fun _ ->
+        let dir = "file_add_file_project_absolute_path_above" |> makeAbsolute
+        let p =   dir </> "src" </> "Sample" </> "Test.fs"
+        let projectPath = dir </> "src" </> "Sample" </> "Sample.fsproj"
+        [ "new project -n Sample --dir src -t console --no-paket"
+          sprintf "add file -p %s -n %s --above %s " projectPath p "Sample.fs" ]
+        |> initTest dir
+        let project = dir </> "src" </> "Sample" </> "Sample.fsproj" |> loadProject
+        project |> Expect.hasFile "Test.fs"
+
+      testCase "Add File - with project, absolute path, below" <| fun _ ->
+        let dir = "file_add_file_project_absolute_path_below" |> makeAbsolute
+        let p =   dir </> "src" </> "Sample" </> "Test.fs"
+        let projectPath = dir </> "src" </> "Sample" </> "Sample.fsproj"
+        [ "new project -n Sample --dir src -t console --no-paket"
+          sprintf "add file -p %s -n %s --below %s " projectPath p "Sample.fs" ]
+        |> initTest dir
+        let project = dir </> "src" </> "Sample" </> "Sample.fsproj" |> loadProject
+        project |> Expect.hasFile "Test.fs"
+
+      testCase "Add File - with project, absolute path, copy-to-output" <| fun _ ->
+        let dir = "file_add_file_project_absolute_path_copy" |> makeAbsolute
+        let p =   dir </> "src" </> "Sample" </> "Test.fs"
+        let projectPath = dir </> "src" </> "Sample" </> "Sample.fsproj"
+        [ "new project -n Sample --dir src -t console --no-paket"
+          sprintf "add file -p %s -n %s --copy-to-output always" projectPath p ]
+        |> initTest dir
+        let project = dir </> "src" </> "Sample" </> "Sample.fsproj" |> loadProject
+        project |> Expect.hasFile "Test.fs"
     ]
     testList "Remove file" [
       testCase "Remove File" <| fun _ ->
@@ -248,5 +289,48 @@ let tests =
         |> initTest dir
         let project = dir </> "src" </> "Sample" </> "Sample.fsproj" |> loadProject
         project |> Expect.hasFile "Renamed.fs"
+
+      testCase "Rename file nonexistent folder" <| fun _ ->
+        let dir = "rename_file_nonexistent_folder"
+        ["new project -n Sample --dir src -t console --no-paket"
+         "new file -n src/Sample/Test --project src/Sample/Sample.fsproj --template fs"
+         "rename file -n src/Sample/Test.fs -r src/Sample/Test/Renamed.fs"
+        ]
+        |> initTest dir
+        let project = dir </> "src" </> "Sample" </> "Sample.fsproj" |> loadProject
+        project |> Expect.hasFile "Test.fs"
+
+      testCase "Rename file existing file" <| fun _ ->
+        let dir = "rename_file_existing_file"
+        ["new project -n Sample --dir src -t console --no-paket"
+         "new file -n src/Sample/Test --project src/Sample/Sample.fsproj --template fs"
+         "rename file -n src/Sample/Test.fs -r src/Sample/Sample.fs"
+        ]
+        |> initTest dir
+        let project = dir </> "src" </> "Sample" </> "Sample.fsproj" |> loadProject
+        project |> Expect.hasFile "Test.fs"
+    ]
+    testList "List output" [
+        testCase "List files in fsproj" <| fun _ ->
+            let s = "Sample.fs" + System.Environment.NewLine + "App.config" + System.Environment.NewLine
+            let dir = "list_files"
+            ["new project -n Sample --dir src -t console --no-paket"]
+            |> initTest dir
+            ["list files -p src/Sample/Sample.fsproj"]
+            |> runForgeWithOutput
+            |> Expecto.Flip.Expect.equal "should be equal" s
+
+        testCase "List projects in folder" <| fun _ ->
+            let s1 = "src" </> "Sample" </> "Sample.fsproj"
+            let s2 = "src" </> "Sample2" </> "Sample2.fsproj"
+            let s = s1 + System.Environment.NewLine + s2 + System.Environment.NewLine
+            let dir = "list_projects"
+            ["new project -n Sample --dir src -t console --no-paket"
+             "new project -n Sample2 --dir src -t console --no-paket"
+            ]
+            |> initTest dir
+            ["list projects --folder src"]
+            |> runForgeWithOutput 
+            |> Expecto.Flip.Expect.equal "should be equal" s
     ]
   ]

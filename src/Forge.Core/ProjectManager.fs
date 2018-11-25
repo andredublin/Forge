@@ -247,8 +247,17 @@ module Furnace =
 
 
     let renameSourceFile (path:string, newName:string) (state: ActiveState) =
-        if not ^ File.Exists path then
+        if not ^ isValidPath newName then
+            traceError ^ "Cannot Rename File - invalid name"
+            state
+        elif not ^ File.Exists path then
             traceError ^ sprintf "Cannot Rename File - '%s' does not exist" path
+            state
+        elif File.Exists newName then
+            traceError ^ sprintf "Cannot Rename File - '%s' already exists" newName
+            state
+        elif Path.GetDirectoryName newName |> Directory.Exists |> not then
+            traceError ^ sprintf "Cannot Rename File - '%s' does not exist" (Path.GetDirectoryName newName)
             state
         else
             renameFile path newName
@@ -289,6 +298,21 @@ module Furnace =
         |> List.filter filterFn
         |> List.iter trace
         state
+
+    let listProjects (folder: string option) (filter: string option) =
+        let filterFn =
+            match filter with
+            | Some s -> (fun fileName -> (String.editDistance fileName s) < 5)
+            | None   -> (fun _ -> true)
+        let dir =
+            match folder with
+            | Some s -> s 
+            | None   -> getCwd() + Path.DirectorySeparatorChar.ToString()
+        Globbing.search dir "**/*proj"
+        |> List.filter (fun s -> System.IO.Path.GetFileNameWithoutExtension(s) |> filterFn)
+        |> List.map (fun s -> relative s dir)
+        |> List.iter trace
+
 
     let rec tryFindProject dir =
         try

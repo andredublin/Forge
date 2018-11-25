@@ -106,11 +106,11 @@ let CompareProjectsTo templateProject projects =
 
     if String.isNotNullOrEmpty errors then failwith errors
 
-
 let Refresh () =
     printfn "Getting templates..."
     cleanDir templatesLocation
     cloneSingleBranch exeLocation "https://github.com/fsharp-editing/Forge-templates.git" "master" "templates"
+    printfn "Templates refreshed..."
 
 let EnsureTemplatesExist () =
     if not ^ Directory.Exists templatesLocation then Refresh ()
@@ -179,35 +179,43 @@ module Project =
         let vscodeDir = templatesLocation </> ".vscode"
         let vscodeDir' = getCwd() </> ".vscode"
         let templateDir = templatesLocation </> templateName'
+        let contentDir = templateDir </> "_content"
         let gitignorePath = (templatesLocation </> ".vcsignore" </> ".gitignore")
 
         if pathCheck projectFolder |> not then
             printfn "\"%s\" is not a valid project folder." projectFolder
         elif templates |> Seq.contains templateName' |> not then
-            printfn "Wrong template name"
+            printfn "Incorrect template number or name"
         else
-            printfn "Generating project..."
-            copyDir projectFolder templateDir (fun _ -> true)
-            applicationNameToProjectName projectFolder projectName'
-            if Directory.GetFiles (getCwd()) |> Seq.exists (fun n -> n.EndsWith ".gitignore") |> not then
-              File.Copy(gitignorePath, (getCwd() </> ".gitignore"), false)
-            if vscode then
-                copyDir vscodeDir' vscodeDir (fun _ -> true)
+            printfn "Generating %s project..." templateName' 
 
+
+            copyDir projectFolder templateDir (fun f -> f.Contains "_content" |> not) false //Copy project files
+            applicationNameToProjectName projectFolder projectName'
             sed "<%= namespace %>" (fun _ -> projectName') projectFolder
             sed "<%= guid %>" (fun _ -> Guid.NewGuid().ToString()) projectFolder
             sed "<%= paketPath %>" (relative ^ getCwd()) projectFolder
             sed "<%= packagesPath %>" (relative ^ getPackagesDirectory()) projectFolder
+
+            if Directory.Exists contentDir then
+                copyDir (getCwd()) contentDir (fun _ -> true) false
+                sed "<%= projectPath %>" (fun s -> "." </>  (relative (projectFolder </> (projectName' + ".fsproj")) s)) (getCwd ())
+
+            if Directory.GetFiles (getCwd()) |> Seq.exists (fun n -> n.EndsWith ".gitignore") |> not then
+                File.Copy(gitignorePath, (getCwd() </> ".gitignore"), false)
+
+            if vscode then
+                copyDir vscodeDir' vscodeDir (fun _ -> true) false
 
             if paket then
                 Paket.Init ^ getCwd()
 
                 Directory.GetFiles projectFolder
                 |> Seq.tryFind (fun n -> n.EndsWith "paket.references")
-                |> Option.iter (File.ReadAllLines >> Seq.iter (fun ref -> Paket.Run ["add"; "nuget"; ref; "--no-install"]) )
-                Paket.Run ["install";]
+                |> Option.iter (File.ReadAllLines >> Seq.iter (fun ref -> Paket.Run ["add"; ref; "--no-resolve"]) )
+
             if fake then
-                if paket then Paket.Run ["add"; "nuget"; "FAKE"]
+                if paket then Paket.Run ["add"; "FAKE"; "--no-resolve"; "--group Build"]
                 Fake.Copy ^ getCwd()
                 let buildSh = getCwd() </> "build.sh"
                 let ctn = File.ReadAllText buildSh
@@ -216,6 +224,8 @@ module Project =
                 if isMono then
                     let perms = FilePermissions.S_IRWXU ||| FilePermissions.S_IRGRP ||| FilePermissions.S_IROTH // 0x744
                     Syscall.chmod(buildSh, perms) |> ignore
+
+            if paket then Paket.Run ["install"]
 
 
             printfn "Done!"
@@ -240,7 +250,7 @@ module File =
         File.WriteAllText(file, contents)
 
 
-    let New fileName template project buildAction =
+    let New fileName template project buildAction copy =
         EnsureTemplatesExist ()
 
         let templates = getTemplates ()
@@ -267,7 +277,7 @@ module File =
         match project' with
         | Some f ->
             ProjectManager.Furnace.loadFsProject f
-            |> ProjectManager.Furnace.addSourceFile (newFile, None, buildAction, None, None, None)
+            |> ProjectManager.Furnace.addSourceFile (newFile, None, buildAction, None, copy, None)
             |> ignore
         | None ->
             traceWarning "Project file not found, use `add file --project<string>` to add file to project"

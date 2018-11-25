@@ -560,8 +560,7 @@ type SourceTree (files:SourceFile list) =
     let hasTarget (target:string) =
         let temp = normalizeFileName target
         if isDirectory temp then tree.ContainsKey temp
-        elif data.ContainsKey temp then true else
-        false
+        else data.ContainsKey temp
 
     let moveFile shift target =
         if not ^ hasTarget target then () else
@@ -580,30 +579,30 @@ type SourceTree (files:SourceFile list) =
     member __.MoveDown (target:string) = moveFile 1 target
 
     member self.AddAbove (target:string) (srcFile:SourceFile) =
-        if not ^ hasTarget target then () else
-        let parent = getParentDir target
+        let dir = getParentDir target
         let fileName = removeParentDir srcFile.Include
-        let srcFile = {srcFile with Include = parent + fileName}
-        if tree.ContainsKey parent then
-            let arr = tree.[parent]
+        let keyPath  = normalizeFileName (dir + fileName)
+        let srcFile = { srcFile with Include = keyPath }
+        if  not ^ data.ContainsKey keyPath then
+            let arr = tree.["/"]
             let idx = ResizeArray.indexOf (removeParentDir target) arr
-            tree.[parent] <- ResizeArray.insert idx fileName arr
-            data.[parent+fileName] <- srcFile
+            tree.["/"] <- ResizeArray.insert idx fileName arr
+            data.[fileName] <- srcFile
 
 
     member self.AddBelow (target:string) (srcFile:SourceFile) =
-        if not ^ hasTarget target then () else
-        let parent = getParentDir target
+        let dir = getParentDir target
         let fileName = removeParentDir srcFile.Include
-        let srcFile = {srcFile with Include = parent + fileName}
-        if tree.ContainsKey parent then
-            let arr = tree.[parent]
+        let keyPath  = normalizeFileName (dir + fileName)
+        let srcFile = { srcFile with Include = keyPath }
+        if  not ^ data.ContainsKey keyPath then
+            let arr = tree.["/"]
             let idx = ResizeArray.indexOf (removeParentDir target) arr
             if idx = arr.Count then
-                tree.[parent] <- ResizeArray.add fileName arr
+                tree.["/"] <- ResizeArray.add fileName arr
             else
-                tree.[parent] <- ResizeArray.insert (idx+1) fileName arr
-            data.[parent+fileName] <- srcFile
+                tree.["/"] <- ResizeArray.insert (idx+1) fileName arr
+            data.[fileName] <- srcFile
 
 
     member __.AddSourceFile (dir:string) (srcFile:SourceFile) =
@@ -802,6 +801,14 @@ type Property<'a> =
         else
             None
 
+    member self.ToXElem (mapData: 'a -> string) =
+        if self.Data.IsSome then
+            XElem.create self.Name [mapData self.Data.Value]
+            |> mapOpt self.Condition ^ XElem.setAttribute Constants.Condition
+            |> Some
+        else
+            None
+
 
 let property name data =
     {   Name        = name
@@ -831,9 +838,12 @@ type ProjectSettings =
 
     static member fromXElem (xelem:XElement) =
 
-        let splitGuids (str:string) =
+        let splitBySemicolon (str:string) =
             if String.IsNullOrWhiteSpace str then [] else
-            str.Split ';' |> Array.choose parseGuid |> List.ofArray
+            str.Split ';' |> List.ofArray
+
+        let splitGuids (str:string) =
+            splitBySemicolon str |> List.choose parseGuid
 
         if  not (Constants.PropertyGroup = xelem.Name.LocalName)
          || XElem.hasAttribute Constants.Condition xelem then
@@ -866,7 +876,7 @@ type ProjectSettings =
             ProjectType                  = elemmap Constants.ProjectType splitGuids
             OutputType                   = elemmap Constants.OutputType OutputType.Parse
             TargetFramework              = elem    Constants.TargetFramework
-            TargetFrameworks             = elemmap Constants.TargetFrameworks (fun s -> s.Split ';' |> Array.toList)
+            TargetFrameworks             = elemmap Constants.TargetFrameworks splitBySemicolon
             TargetFrameworkVersion       = elem    Constants.TargetFrameworkVersion
             TargetFrameworkProfile       = elem    Constants.TargetFrameworkProfile
             AutoGenerateBindingRedirects = elemmap Constants.AutoGenerateBindingRedirects Boolean.Parse
@@ -875,6 +885,11 @@ type ProjectSettings =
         }
         //|> mapOpt self.Link      ^ XElem.addElem Constants.Link
         member self.ToXElem () =
+            let toXElemMap (prop:Property<'a>) mapfn =
+                prop.ToXElem mapfn
+
+            let joinBySemicolon = String.concat ";"
+
             XElem.create Constants.PropertyGroup []
             |> mapOpt (toXElem self.Name) XElem.addElement
             |> mapOpt (toXElem self.AssemblyName) XElem.addElement
@@ -886,7 +901,7 @@ type ProjectSettings =
             |> mapOpt (toXElem self.ProjectType) XElem.addElement
             |> mapOpt (toXElem self.OutputType) XElem.addElement
             |> mapOpt (toXElem self.TargetFramework) XElem.addElement
-            |> mapOpt (toXElem self.TargetFrameworks) XElem.addElement
+            |> mapOpt (toXElemMap self.TargetFrameworks joinBySemicolon) XElem.addElement
             |> mapOpt (toXElem self.TargetFrameworkVersion) XElem.addElement
             |> mapOpt (toXElem self.TargetFrameworkProfile) XElem.addElement
             |> mapOpt (toXElem self.AutoGenerateBindingRedirects) XElem.addElement

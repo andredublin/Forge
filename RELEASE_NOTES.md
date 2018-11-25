@@ -1,11 +1,26 @@
-### 2.0.0-Boötes - 2017-07-30
+### 2.2.0 - 2018-01-11
+* Add FAKE into build group instead Main group
+* Add list projects by folder command
+* Add checking validity of renamed files
+
+### 2.1.0 - 2017-10-26
+* Handle call without and command
+* Fix add above/below
+* Resolve BadImageFormatException on Mono
+* Numbered templates
+* Added argument for CopyToOutputDirectory setting
+
+### 2.0.0 - 2017-09-13
 * **This is not backward compatible change**
 * Update ProjectSystem to support SDK based project files
 * Update templates to use SDK based project files
 * Move templates to https://github.com/fsharp-editing/forge-templates
 * Update generated FAKE script
 * Infrastructure changes
-* Include .vscode folder
+* Include `.vscode` folder
+* Remove interactive mode
+* Add support for solution level content in templates (`_content`)
+* Multiple small fixes
 
 ### 1.4.2 - 2017-06-03
 * Add support for `FORGE_TEMPLATE_DIR` environment variable
